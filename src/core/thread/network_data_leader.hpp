@@ -189,6 +189,16 @@ public:
     void GetCommissioningDataset(MeshCoP::CommissioningDataset &aDataset) const;
 
     /**
+     * Processes a MGMT_COMMISSIONER_GET request message and prepares the response.
+     *
+     * @param[in] aRequest   The MGMT_COMMISSIONER_GET request message.
+     *
+     * @returns The prepared response, or `nullptr` if fails to parse the request or cannot allocate message.
+     *
+     */
+    Coap::Message *ProcessCommissionerGetRequest(const Coap::Message &aMessage) const;
+
+    /**
      * Searches for given sub-TLV in Commissioning Data TLV.
      *
      * @tparam SubTlvType    The sub-TLV type to search for.
@@ -326,6 +336,17 @@ public:
      *
      */
     Error GetPreferredNat64Prefix(ExternalRouteConfig &aConfig) const;
+
+    /**
+     * Indicates whether or not the given IPv6 address matches any NAT64 prefixes.
+     *
+     * @param[in]  aAddress  An IPv6 address to check.
+     *
+     * @retval TRUE   If @p aAddress matches a NAT64 prefix.
+     * @retval FALSE  If @p aAddress does not match a NAT64 prefix.
+     *
+     */
+    bool IsNat64(const Ip6::Address &aAddress) const;
 
 #if OPENTHREAD_FTD
     /**

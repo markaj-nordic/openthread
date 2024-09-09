@@ -239,6 +239,14 @@ public:
 #endif // OPENTHREAD_CONFIG_BORDER_AGENT_EPHEMERAL_KEY_ENABLE
 
     /**
+     * Gets the set of border agent counters.
+     *
+     * @returns The border agent counters.
+     *
+     */
+    const otBorderAgentCounters *GetCounters(void) { return &mCounters; }
+
+    /**
      * Returns the UDP Proxy port to which the commissioner is currently
      * bound.
      *
@@ -285,12 +293,12 @@ private:
     void                SendErrorMessage(const ForwardContext &aForwardContext, Error aError);
     void                SendErrorMessage(const Coap::Message &aRequest, bool aSeparate, Error aError);
 
-    static void HandleConnected(bool aConnected, void *aContext);
-    void        HandleConnected(bool aConnected);
+    static void HandleConnected(SecureTransport::ConnectEvent aEvent, void *aContext);
+    void        HandleConnected(SecureTransport::ConnectEvent aEvent);
 
     template <Uri kUri> void HandleTmf(Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo);
 
-    void HandleTmfDatasetGet(Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo, Dataset::Type aType);
+    void HandleTmfDatasetGet(Coap::Message &aMessage, const Ip6::MessageInfo &aMessageInfo, Uri aUri);
     void HandleTimeout(void);
 
 #if OPENTHREAD_CONFIG_BORDER_AGENT_EPHEMERAL_KEY_ENABLE
@@ -333,6 +341,7 @@ private:
     EphemeralKeyTask               mEphemeralKeyTask;
     Callback<EphemeralKeyCallback> mEphemeralKeyCallback;
 #endif
+    otBorderAgentCounters mCounters;
 };
 
 DeclareTmfHandler(BorderAgent, kUriRelayRx);
@@ -340,11 +349,8 @@ DeclareTmfHandler(BorderAgent, kUriCommissionerPetition);
 DeclareTmfHandler(BorderAgent, kUriCommissionerKeepAlive);
 DeclareTmfHandler(BorderAgent, kUriRelayTx);
 DeclareTmfHandler(BorderAgent, kUriCommissionerGet);
-DeclareTmfHandler(BorderAgent, kUriCommissionerSet);
 DeclareTmfHandler(BorderAgent, kUriActiveGet);
-DeclareTmfHandler(BorderAgent, kUriActiveSet);
 DeclareTmfHandler(BorderAgent, kUriPendingGet);
-DeclareTmfHandler(BorderAgent, kUriPendingSet);
 DeclareTmfHandler(BorderAgent, kUriProxyTx);
 
 } // namespace MeshCoP

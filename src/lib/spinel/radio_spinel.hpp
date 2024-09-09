@@ -172,7 +172,7 @@ public:
      *                                         directly do a hardware reset.
      * @param[in]  aSpinelDriver               A pointer to the spinel driver instance that this object depends on.
      * @param[in]  aRequiredRadioCaps          The required radio capabilities. RadioSpinel will check if RCP has
-     *                                         the required capabilities during initiailization.
+     *                                         the required capabilities during initialization.
      * @param[in]  aEnableRcpTimeSync          TRUE to enable RCP time sync, FALSE to not enable.
      *
      */
@@ -1106,6 +1106,14 @@ public:
     void SetVendorRestorePropertiesCallback(otRadioSpinelVendorRestorePropertiesCallback aCallback, void *aContext);
 #endif // OPENTHREAD_SPINEL_CONFIG_VENDOR_HOOK_ENABLE
 
+    /**
+     * Enables or disables the time synchronization between the host and RCP.
+     *
+     * @param[in]  aOn  TRUE to turn on the time synchronization, FALSE otherwise.
+     *
+     */
+    void SetTimeSyncState(bool aOn) { mTimeSyncOn = aOn; }
+
 private:
     enum
     {
@@ -1308,7 +1316,6 @@ private:
     int8_t       mCcaEnergyDetectThreshold;
     int8_t       mTransmitPower;
     int8_t       mFemLnaGain;
-    uint32_t     mMacFrameCounter;
     bool         mCoexEnabled : 1;
     bool         mSrcMatchEnabled : 1;
 
@@ -1342,7 +1349,8 @@ private:
     void                                        *mVendorRestorePropertiesContext;
 #endif
 
-    bool mEnableRcpTimeSync;
+    bool mTimeSyncEnabled : 1;
+    bool mTimeSyncOn : 1;
 
     SpinelDriver *mSpinelDriver;
 };

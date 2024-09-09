@@ -216,6 +216,14 @@ ot::Posix::RcpCapsDiag &GetRcpCapsDiag(void) { return sRadio.GetRcpCapsDiag(); }
 
 void platformRadioDeinit(void) { GetRadioSpinel().Deinit(); }
 
+void platformRadioHandleStateChange(otInstance *aInstance, otChangedFlags aFlags)
+{
+    if (OT_CHANGED_THREAD_NETIF_STATE & aFlags)
+    {
+        GetRadioSpinel().SetTimeSyncState(otIp6IsEnabled(aInstance));
+    }
+}
+
 void otPlatRadioGetIeeeEui64(otInstance *aInstance, uint8_t *aIeeeEui64)
 {
     OT_UNUSED_VARIABLE(aInstance);
@@ -340,11 +348,11 @@ void platformRadioUpdateFdSet(otSysMainloopContext *aContext)
     {
         uint64_t remain = deadline - now;
 
-        if (remain < (static_cast<uint64_t>(aContext->mTimeout.tv_sec) * US_PER_S +
+        if (remain < (static_cast<uint64_t>(aContext->mTimeout.tv_sec) * OT_US_PER_S +
                       static_cast<uint64_t>(aContext->mTimeout.tv_usec)))
         {
-            aContext->mTimeout.tv_sec  = static_cast<time_t>(remain / US_PER_S);
-            aContext->mTimeout.tv_usec = static_cast<suseconds_t>(remain % US_PER_S);
+            aContext->mTimeout.tv_sec  = static_cast<time_t>(remain / OT_US_PER_S);
+            aContext->mTimeout.tv_usec = static_cast<suseconds_t>(remain % OT_US_PER_S);
         }
     }
     else

@@ -100,6 +100,7 @@ Mle::Mle(Instance &aInstance)
     , mAttachCounter(0)
     , mAnnounceDelay(kAnnounceTimeout)
     , mAlternatePanId(Mac::kPanIdBroadcast)
+    , mStoreFrameCounterAhead(kDefaultStoreFrameCounterAhead)
     , mTimeout(kDefaultChildTimeout)
 #if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
     , mCslTimeout(kDefaultCslTimeout)
@@ -501,8 +502,8 @@ Error Mle::Store(void)
     }
 
     networkInfo.SetKeySequence(Get<KeyManager>().GetCurrentKeySequence());
-    networkInfo.SetMleFrameCounter(Get<KeyManager>().GetMleFrameCounter() + kStoreFrameCounterAhead);
-    networkInfo.SetMacFrameCounter(Get<KeyManager>().GetMaximumMacFrameCounter() + kStoreFrameCounterAhead);
+    networkInfo.SetMleFrameCounter(Get<KeyManager>().GetMleFrameCounter() + mStoreFrameCounterAhead);
+    networkInfo.SetMacFrameCounter(Get<KeyManager>().GetMaximumMacFrameCounter() + mStoreFrameCounterAhead);
     networkInfo.SetDeviceMode(mDeviceMode.Get());
 
     SuccessOrExit(error = Get<Settings>().Save(networkInfo));
@@ -1776,7 +1777,7 @@ Error Mle::SendChildIdRequest(void)
     SuccessOrExit(error = message->AppendModeTlv(mDeviceMode));
     SuccessOrExit(error = message->AppendTimeoutTlv(mTimeout));
     SuccessOrExit(error = message->AppendVersionTlv());
-    SuccessOrExit(error = message->AppendSupervisionIntervalTlv(Get<SupervisionListener>().GetInterval()));
+    SuccessOrExit(error = message->AppendSupervisionIntervalTlvIfSleepyChild());
 
     if (!IsFullThreadDevice())
     {
@@ -2056,7 +2057,7 @@ Error Mle::SendChildUpdateRequest(ChildUpdateRequestMode aMode)
         SuccessOrExit(error = message->AppendSourceAddressTlv());
         SuccessOrExit(error = message->AppendLeaderDataTlv());
         SuccessOrExit(error = message->AppendTimeoutTlv((aMode == kAppendZeroTimeout) ? 0 : mTimeout));
-        SuccessOrExit(error = message->AppendSupervisionIntervalTlv(Get<SupervisionListener>().GetInterval()));
+        SuccessOrExit(error = message->AppendSupervisionIntervalTlvIfSleepyChild());
 #if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
         if (Get<Mac::Mac>().IsCslEnabled())
         {
@@ -2152,7 +2153,7 @@ Error Mle::SendChildUpdateResponse(const TlvList      &aTlvList,
             break;
 
         case Tlv::kSupervisionInterval:
-            SuccessOrExit(error = message->AppendSupervisionIntervalTlv(Get<SupervisionListener>().GetInterval()));
+            SuccessOrExit(error = message->AppendSupervisionIntervalTlvIfSleepyChild());
             break;
 
 #if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
@@ -3394,6 +3395,7 @@ void Mle::HandleChildUpdateRequest(RxInfo &aRxInfo)
     RxChallenge challenge;
     TlvList     requestedTlvList;
     TlvList     tlvList;
+    uint8_t     linkMarginOut;
 
     SuccessOrExit(error = Tlv::Find<SourceAddressTlv>(aRxInfo.mMessage, sourceAddress));
 
@@ -3435,6 +3437,17 @@ void Mle::HandleChildUpdateRequest(RxInfo &aRxInfo)
         }
 
         SuccessOrExit(error = HandleLeaderData(aRxInfo));
+
+        switch (Tlv::Find<LinkMarginTlv>(aRxInfo.mMessage, linkMarginOut))
+        {
+        case kErrorNone:
+            mParent.SetLinkQualityOut(LinkQualityForLinkMargin(linkMarginOut));
+            break;
+        case kErrorNotFound:
+            break;
+        default:
+            ExitNow(error = kErrorParse);
+        }
 
 #if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
         {
@@ -3494,6 +3507,7 @@ void Mle::HandleChildUpdateResponse(RxInfo &aRxInfo)
     uint32_t    mleFrameCounter;
     uint16_t    sourceAddress;
     uint32_t    timeout;
+    uint8_t     linkMarginOut;
 
     Log(kMessageReceive, kTypeChildUpdateResponseAsChild, aRxInfo.mMessageInfo.GetPeerAddr());
 
@@ -3614,6 +3628,17 @@ void Mle::HandleChildUpdateResponse(RxInfo &aRxInfo)
 
     default:
         OT_ASSERT(false);
+    }
+
+    switch (Tlv::Find<LinkMarginTlv>(aRxInfo.mMessage, linkMarginOut))
+    {
+    case kErrorNone:
+        mParent.SetLinkQualityOut(LinkQualityForLinkMargin(linkMarginOut));
+        break;
+    case kErrorNotFound:
+        break;
+    default:
+        ExitNow(error = kErrorParse);
     }
 
     aRxInfo.mClass = response.IsEmpty() ? RxInfo::kPeerMessage : RxInfo::kAuthoritativeMessage;
@@ -4661,6 +4686,17 @@ Error Mle::TxMessage::AppendAddressEntry(const Ip6::Address &aAddress)
 
     SuccessOrExit(error = Append(controlByte));
     error = Append(aAddress);
+
+exit:
+    return error;
+}
+
+Error Mle::TxMessage::AppendSupervisionIntervalTlvIfSleepyChild(void)
+{
+    Error error = kErrorNone;
+
+    VerifyOrExit(!Get<Mle>().IsRxOnWhenIdle());
+    error = AppendSupervisionIntervalTlv(Get<SupervisionListener>().GetInterval());
 
 exit:
     return error;

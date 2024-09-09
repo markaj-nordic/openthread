@@ -132,6 +132,24 @@ Error Leader::GetPreferredNat64Prefix(ExternalRouteConfig &aConfig) const
     return error;
 }
 
+bool Leader::IsNat64(const Ip6::Address &aAddress) const
+{
+    bool                isNat64  = false;
+    Iterator            iterator = kIteratorInit;
+    ExternalRouteConfig config;
+
+    while (GetNextExternalRoute(iterator, config) == kErrorNone)
+    {
+        if (config.mNat64 && config.GetPrefix().IsValidNat64() && aAddress.MatchesPrefix(config.GetPrefix()))
+        {
+            isNat64 = true;
+            break;
+        }
+    }
+
+    return isNat64;
+}
+
 const PrefixTlv *Leader::FindNextMatchingPrefixTlv(const Ip6::Address &aAddress, const PrefixTlv *aPrevTlv) const
 {
     // This method iterates over Prefix TLVs which match a given IPv6
@@ -561,6 +579,52 @@ void Leader::GetCommissioningDataset(MeshCoP::CommissioningDataset &aDataset) co
 
 exit:
     return;
+}
+
+Coap::Message *Leader::ProcessCommissionerGetRequest(const Coap::Message &aMessage) const
+{
+    Error          error    = kErrorNone;
+    Coap::Message *response = nullptr;
+    OffsetRange    offsetRange;
+
+    response = Get<Tmf::Agent>().NewPriorityResponseMessage(aMessage);
+    VerifyOrExit(response != nullptr, error = kErrorNoBufs);
+
+    if (Tlv::FindTlvValueOffsetRange(aMessage, MeshCoP::Tlv::kGet, offsetRange) == kErrorNone)
+    {
+        // Append the requested sub-TLV types given in Get TLV.
+
+        while (!offsetRange.IsEmpty())
+        {
+            uint8_t             type;
+            const MeshCoP::Tlv *subTlv;
+
+            IgnoreError(aMessage.Read(offsetRange, type));
+            offsetRange.AdvanceOffset(sizeof(type));
+
+            subTlv = FindCommissioningDataSubTlv(type);
+
+            if (subTlv != nullptr)
+            {
+                SuccessOrExit(error = subTlv->AppendTo(*response));
+            }
+        }
+    }
+    else
+    {
+        // Append all sub-TLVs in the Commissioning Data.
+
+        const CommissioningDataTlv *dataTlv = FindCommissioningData();
+
+        if (dataTlv != nullptr)
+        {
+            SuccessOrExit(error = response->AppendBytes(dataTlv->GetValue(), dataTlv->GetLength()));
+        }
+    }
+
+exit:
+    FreeAndNullMessageOnError(response, error);
+    return response;
 }
 
 Error Leader::FindBorderAgentRloc(uint16_t &aRloc16) const

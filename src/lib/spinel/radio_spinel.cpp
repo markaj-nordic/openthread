@@ -38,6 +38,7 @@
 #include <stdarg.h>
 #include <stdlib.h>
 
+#include <openthread/link.h>
 #include <openthread/logging.h>
 #include <openthread/platform/diag.h>
 #include <openthread/platform/time.h>
@@ -111,7 +112,8 @@ RadioSpinel::RadioSpinel(void)
     , mVendorRestorePropertiesCallback(nullptr)
     , mVendorRestorePropertiesContext(nullptr)
 #endif
-    , mEnableRcpTimeSync(false)
+    , mTimeSyncEnabled(false)
+    , mTimeSyncOn(false)
     , mSpinelDriver(nullptr)
 {
     memset(&mRadioSpinelMetrics, 0, sizeof(mRadioSpinelMetrics));
@@ -134,7 +136,7 @@ void RadioSpinel::Init(bool          aSkipRcpCompatibilityCheck,
     mResetRadioOnStartup = aSoftwareReset;
 #endif
 
-    mEnableRcpTimeSync = aEnableRcpTimeSync;
+    mTimeSyncEnabled = aEnableRcpTimeSync;
 
     mSpinelDriver = aSpinelDriver;
     mSpinelDriver->SetFrameHandler(&HandleReceivedFrame, &HandleSavedFrame, this);
@@ -702,7 +704,6 @@ otError RadioSpinel::ParseRadioFrame(otRadioFrame   &aFrame,
         if (flags & SPINEL_MD_FLAG_ACKED_SEC)
         {
             mMacFrameCounterSet = true;
-            mMacFrameCounter    = aFrame.mInfo.mRxInfo.mAckFrameCounter;
         }
 #endif
     }
@@ -798,7 +799,7 @@ void RadioSpinel::Process(const void *aContext)
     ProcessRadioStateMachine();
     RecoverFromRcpFailure();
 
-    if (mEnableRcpTimeSync)
+    if (mTimeSyncEnabled)
     {
         CalcRcpTimeOffset();
     }
@@ -925,7 +926,6 @@ otError RadioSpinel::SetMacFrameCounter(uint32_t aMacFrameCounter, bool aSetIfLa
                                 aMacFrameCounter, aSetIfLarger));
 #if OPENTHREAD_SPINEL_CONFIG_RCP_RESTORATION_MAX_COUNT > 0
     mMacFrameCounterSet = true;
-    mMacFrameCounter    = aMacFrameCounter;
 #endif
 
 exit:
@@ -1577,7 +1577,6 @@ void RadioSpinel::HandleTransmitDone(uint32_t          aCommand,
 
 #if OPENTHREAD_SPINEL_CONFIG_RCP_RESTORATION_MAX_COUNT > 0
         mMacFrameCounterSet = true;
-        mMacFrameCounter    = frameCounter;
 #endif
     }
 
@@ -1919,6 +1918,7 @@ void RadioSpinel::CalcRcpTimeOffset(void)
      *         D = T1' - ((T0 + T2)/ 2)
      */
 
+    EXPECT(mTimeSyncOn, NO_ACTION);
     EXPECT(!mIsTimeSynced || (otPlatTimeGet() >= GetNextRadioTimeRecalcStart()), NO_ACTION);
 
     LogDebg("Trying to get RCP time offset");
@@ -2148,7 +2148,7 @@ void RadioSpinel::RestoreProperties(void)
 
     if (mMacFrameCounterSet)
     {
-        // There is a chance that radio/RCP has used some counters after `mMacFrameCounter` (for enh ack) and they
+        // There is a chance that radio/RCP has used some counters after otLinkGetFrameCounter() (for enh ack) and they
         // are in queue to be sent to host (not yet processed by host RadioSpinel). Here we add some guard jump
         // when we restore the frame counter.
         // Consider the worst case: the radio/RCP continuously receives the shortest data frame and replies with the
@@ -2160,8 +2160,8 @@ void RadioSpinel::RestoreProperties(void)
         // CounterGuard: 2000ms(Timeout) / [(28bytes(Data) + 29bytes(Ack)) * 32us/byte + 192us(Ifs)] = 992
         static constexpr uint16_t kFrameCounterGuard = 1000;
 
-        SuccessOrDie(
-            Set(SPINEL_PROP_RCP_MAC_FRAME_COUNTER, SPINEL_DATATYPE_UINT32_S, mMacFrameCounter + kFrameCounterGuard));
+        SuccessOrDie(Set(SPINEL_PROP_RCP_MAC_FRAME_COUNTER, SPINEL_DATATYPE_UINT32_S,
+                         otLinkGetFrameCounter(mInstance) + kFrameCounterGuard));
     }
 
     for (int i = 0; i < mSrcMatchShortEntryCount; ++i)
@@ -2231,7 +2231,7 @@ void RadioSpinel::RestoreProperties(void)
     }
 #endif
 
-    if (mEnableRcpTimeSync)
+    if (mTimeSyncEnabled)
     {
         CalcRcpTimeOffset();
     }
